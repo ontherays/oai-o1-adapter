@@ -1,0 +1,1139 @@
+# Comprehensive Build Protocol: OAI O1-Adapter & O1/E2-Capable gNB
+
+This guide synthesizes the theoretical architecture of the OAI O1-Adapter with pragmatic, step-by-step build protocols, serving as a comprehensive methodology for both native environments and deterministic Docker deployments.
+
+
+---
+
+## 1. Architectural Overview & Source Fetching
+
+The O1 Adapter acts as a critical bridge within the Open RAN architecture, providing the NETCONF server with related YANG models to facilitate Service Management and Orchestration (SMO).
+
+It relies on a powerful duo for centralized data and secure communication:
+
+* **netopeer2-server:** Provides NETCONF connectivity.
+
+* **sysrepo:** Securely stores and retrieves configuration data using YANG models.
+
+The adapter translates SMO NETCONF requests into telnet commands understood by the OAI softmodem, bridging standardized management with real-time hardware execution.
+
+### 1.1 High-Level Architecture
+
+![alt text](resources/oai-o1-adapter.png)
+
+---
+
+### 1.2 Fetch the Source Code
+
+Begin by cloning the adapter source code, which is distributed under the Collaborative Standards Software License (CSSL) v1.0.
+
+Use a generic workspace rather than documenting a machine-specific filesystem path:
+
+```bash
+mkdir -p <WORKSPACE>
+cd <WORKSPACE>
+
+git clone https://gitlab.eurecom.fr/oai/o1-adapter.git oai-o1-adapter
+cd oai-o1-adapter
+
+chmod -R +x .
+```
+
+Verify the repository:
+
+```bash
+git status
+git remote -v
+```
+
+The upstream repository should remain the authoritative source for the adapter source code and its licensing information.
+
+---
+
+# 2. Methodology A: Native Compilation (Without Docker)
+
+This method is intended for environments where no container will be used.
+
+Building directly from source requires manually installing the required dependencies, including:
+
+* `pthread`
+* `libyang`
+* `sysrepo`
+* `curl`
+* `telnet`
+* `cjson`
+* `libssh`
+* `libnetconf2`
+* NETCONF/Netopeer2 components
+* standard build tooling
+
+The exact dependency versions may vary depending on the operating-system release and the O1-Adapter revision being built.
+
+---
+
+## 2.1 Complete Native Build Procedure
+
+Execute the following commands sequentially as the root user or through `sudo`.
+
+### Step 1 — Update the system and install essential build tools
+
+```bash
+sudo apt-get update
+sudo apt-get upgrade
+
+sudo apt-get install -y \
+  tzdata \
+  build-essential \
+  git \
+  cmake \
+  pkg-config \
+  unzip \
+  wget \
+  libpcre2-dev \
+  zlib1g-dev \
+  libssl-dev \
+  autoconf \
+  libtool
+```
+
+### Step 2 — Install NETCONF-related daemons and tools
+
+```bash
+sudo apt-get install -y \
+  --no-install-recommends \
+  psmisc \
+  unzip \
+  wget \
+  openssl \
+  openssh-client \
+  vsftpd \
+  openssh-server
+```
+
+### Step 3 — Create the required NETCONF user
+
+The NETCONF service may require a dedicated system user.
+
+**Do not publish a real password in documentation or source control.**
+
+For a local development environment:
+
+```bash
+sudo adduser --system netconf
+sudo passwd netconf
+```
+
+For automated environments, provision the credential using the operating system's secret-management mechanism rather than embedding it in a shell script.
+
+If the deployment requires a predefined credential, represent it as:
+
+```text
+NETCONF_USER=<NETCONF_USER>
+NETCONF_PASSWORD=<NETCONF_PASSWORD>
+```
+
+and inject it securely at deployment time.
+
+---
+
+### Step 4 — Install NETCONF dependencies
+
+From the O1-Adapter repository:
+
+```bash
+cd <WORKSPACE>/oai-o1-adapter
+
+./scripts/netconf_dep_install.sh
+sudo ldconfig
+```
+
+This stage installs the required NETCONF dependency chain, including components such as:
+
+* libssh
+* libyang
+* sysrepo
+* libnetconf2
+* netopeer2
+
+The exact versions should be taken from the scripts and dependency definitions associated with the specific adapter revision.
+
+---
+
+### Step 5 — Configure Netopeer2 host keys and configuration
+
+Run:
+
+```bash
+sudo /usr/local/share/netopeer2/merge_hostkey.sh
+sudo /usr/local/share/netopeer2/merge_config.sh
+```
+
+These operations configure the Netopeer2 server environment required for NETCONF operation.
+
+---
+
+### Step 6 — Retrieve and install the O1 YANG models
+
+Retrieve the required YANG models:
+
+```bash
+cd <WORKSPACE>/oai-o1-adapter
+
+./docker/scripts/get-yangs.sh
+./docker/scripts/install-yangs.sh
+```
+
+The YANG models provide the schema used by the NETCONF/sysrepo management plane.
+
+---
+
+### Step 7 — Compile the adapter
+
+```bash
+cd <WORKSPACE>/oai-o1-adapter/src
+
+./build.sh
+```
+
+Verify that the adapter binary was generated:
+
+```bash
+ls -lh
+```
+
+---
+
+# 3. Native Execution
+
+Two components must operate simultaneously to provide an O1 NETCONF service:
+
+1. **netopeer2-server**
+2. **gnb-adapter**
+
+---
+
+## 3.1 Start Netopeer2
+
+The NETCONF server should be started with an appropriate timeout.
+
+For long-running requests, the adapter methodology uses:
+
+```text
+-t 60
+```
+
+which increases the relevant timeout from the default short interval to approximately 60 seconds.
+
+A representative invocation is:
+
+```bash
+netopeer2-server -d -t 60
+```
+
+The exact invocation may vary according to the installed Netopeer2 version.
+
+---
+
+## 3.2 Start the gNB Adapter
+
+Start the adapter binary:
+
+```bash
+./gnb-adapter
+```
+
+Ensure the terminal environment is configured appropriately:
+
+```bash
+export TERM=xterm-256color
+```
+
+The adapter establishes communication with the OAI softmodem through the gNB's telnet interface.
+
+---
+
+## 3.3 Native Runtime Relationship
+
+```text
++------------------+
+|       SMO        |
++--------+---------+
+         |
+         | NETCONF / SSH
+         v
++------------------+
+| netopeer2-server |
++--------+---------+
+         |
+         | sysrepo
+         v
++------------------+
+|    sysrepo DB    |
++--------+---------+
+         |
+         | Adapter logic
+         v
++------------------+
+|   gnb-adapter    |
++--------+---------+
+         |
+         | Telnet
+         v
++------------------+
+|     OAI gNB      |
++------------------+
+```
+
+---
+
+# 4. Methodology B: Docker Build (Production & CI/CD)
+
+Docker encapsulates the dependency chain and provides a more deterministic build environment.
+
+The adapter's Docker build includes the NETCONF-related components required by the application.
+
+> **Important:** Any credentials included in a Dockerfile, image layer, shell script, or Git repository may become recoverable from image history or repository history. Credentials must therefore never be hardcoded into production Dockerfiles.
+
+The adapter contains no DPDK dependency and is not inherently tied to MARCH/AVX-specific execution requirements. Its runtime functionality primarily consists of NETCONF management and periodic communication with the gNB's telnet interface.
+
+---
+
+## 4.1 Wrapper Approach
+
+The repository provides a `build-adapter.sh` build wrapper.
+
+Use the adapter-specific build mode:
+
+```bash
+./build-adapter.sh --adapter
+```
+
+Verify the generated image:
+
+```bash
+docker images | grep -i adapter
+```
+
+A typical local image may appear as:
+
+```text
+adapter-gnb:latest
+```
+
+The exact tag can vary according to the build script and repository revision.
+
+---
+
+# 5. Container Image Tagging
+
+For an external or private registry, use environment-specific variables rather than embedding a real registry address or username into the README.
+
+Define:
+
+```bash
+export REGISTRY_HOST="<REGISTRY_HOST>"
+export REGISTRY_NAMESPACE="<REGISTRY_NAMESPACE>"
+export IMAGE_TAG="<IMAGE_TAG>"
+```
+
+For example:
+
+```bash
+docker tag adapter-gnb:latest \
+  "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-o1-adapter:${IMAGE_TAG}"
+```
+
+Authenticate using the registry's supported credential mechanism:
+
+```bash
+docker login "${REGISTRY_HOST}"
+```
+
+Then push:
+
+```bash
+docker push \
+  "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-o1-adapter:${IMAGE_TAG}"
+```
+
+### Recommended naming convention
+
+Use:
+
+```text
+<REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-o1-adapter:<VERSION>
+```
+
+For example:
+
+```text
+registry.example.org/project/oai-o1-adapter:v1
+```
+
+Avoid embedding internal hostnames, usernames, personal namespaces, or credentials in repository documentation.
+
+---
+
+# 6. Direct Docker Build (CI-Friendly)
+
+For a CI pipeline requiring deterministic tags, bypass the wrapper and invoke Docker directly.
+
+From the repository root:
+
+```bash
+docker build \
+  -f docker/Dockerfile.adapter \
+  -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-o1-adapter:${IMAGE_TAG}" \
+  .
+```
+
+The build environment must have network access to the external repositories required by the dependency-installation and YANG retrieval scripts.
+
+Typical dependencies include:
+
+* GitHub-hosted repositories used by dependency installation
+* 3GPP sources
+* O-RAN Software Community repositories or Gerrit infrastructure
+* Other upstream sources referenced by the build scripts
+
+### Build troubleshooting
+
+URL drift or changes in upstream repositories are common causes of build failures.
+
+Before debugging the Dockerfile itself, verify:
+
+```bash
+git status
+```
+
+and inspect the URLs used by:
+
+```bash
+scripts/netconf_dep_install.sh
+docker/scripts/get-yangs.sh
+docker/scripts/install-yangs.sh
+```
+
+---
+
+# 7. O1-Capable gNB Clean Build (FHI 7.2)
+
+A functional O1 interface requires both:
+
+1. An O1 Adapter
+2. A compatible OAI gNB build
+
+The standard `ran-build-fhi72` build stage may contain the required telnet server libraries, while the final runtime image may not automatically include every O1-related shared object.
+
+Therefore, verify the runtime image explicitly.
+
+---
+
+## 7.1 Patch the gNB Dockerfile
+
+Open:
+
+```text
+docker/Dockerfile.gNB.fhi72.ubuntu
+```
+
+Locate the `COPY --from=gnb-build ... /usr/local/lib` section.
+
+Ensure the required telnet libraries are copied into the runtime image:
+
+```dockerfile
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_ci.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_o1.so \
+```
+
+The important distinction is:
+
+```text
+libtelnetsrv.so
+        |
+        +-- Core telnet server
+
+libtelnetsrv_ci.so
+        |
+        +-- CI-related telnet functionality
+
+libtelnetsrv_o1.so
+        |
+        +-- O1-specific integration
+```
+
+### Important
+
+The telnet server library alone does **not** guarantee O1 functionality.
+
+The O1 module:
+
+```text
+libtelnetsrv_o1.so
+```
+
+must be present when the gNB is expected to provide the O1 telnet functionality required by the adapter.
+
+---
+
+# 8. Build the OAI FHI 7.2 Runtime Image
+
+Use a generic source directory and registry tag:
+
+```bash
+cd <OAI_SOURCE_DIR>
+
+docker build \
+  --target oai-gnb \
+  --tag "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-gnb-fhi72:<OAI_VERSION>-o1" \
+  --file docker/Dockerfile.gNB.fhi72.ubuntu \
+  .
+```
+
+For example, the resulting image naming convention can be:
+
+```text
+<REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-gnb-fhi72:<OAI_VERSION>-o1
+```
+
+---
+
+# 9. Verify the O1 Libraries
+
+The runtime image may use an `ENTRYPOINT`.
+
+Therefore, overriding the entrypoint is useful when inspecting the filesystem or dynamic linker configuration.
+
+```bash
+docker run --rm \
+  --entrypoint bash \
+  "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-gnb-fhi72:<OAI_VERSION>-o1" \
+  -lc "ldconfig -p | grep -i telnet"
+```
+
+The expected result should contain entries corresponding to:
+
+```text
+libtelnetsrv.so
+libtelnetsrv_ci.so
+libtelnetsrv_o1.so
+```
+
+and they should resolve to the expected library directory, commonly:
+
+```text
+/usr/local/lib/
+```
+
+You can also verify the files directly:
+
+```bash
+docker run --rm \
+  --entrypoint bash \
+  "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/oai-gnb-fhi72:<OAI_VERSION>-o1" \
+  -lc "ls -lh /usr/local/lib/libtelnetsrv*"
+```
+
+---
+
+# 10. Optional: E2 Agent Patching (OSC Near-RT RIC)
+
+If the architecture requires the gNB to terminate an E2 connection toward an OSC Near-RT RIC, configure the E2 Agent before compiling the relevant build stage.
+
+The exact E2 transport configuration depends on the RIC deployment.
+
+---
+
+## 10.1 Identify the RIC E2T SCTP Port
+
+The E2 termination point commonly uses an SCTP port such as:
+
+```text
+<RIC_E2_SCTP_PORT>
+```
+
+A frequently encountered default is:
+
+```text
+36421
+```
+
+However, **do not assume that this port applies to every deployment**.
+
+Always verify the actual E2T configuration of the target Near-RT RIC.
+
+---
+
+## 10.2 Modify the E2 Agent Configuration
+
+Locate:
+
+```text
+openair2/E2AP/flexric/src/agent/e2_agent_api.c
+```
+
+If the source version uses a compile-time port definition, configure:
+
+```c
+#define E2_AGENT_PORT <RIC_E2_SCTP_PORT>
+```
+
+Do not commit an environment-specific private port or endpoint unless it is intentionally part of the public example configuration.
+
+---
+
+## 10.3 Rebuild
+
+Rebuild the relevant FHI 7.2 build stage:
+
+```text
+ran-build-fhi72
+```
+
+followed by:
+
+```text
+oai-gnb
+```
+
+A resulting image can use a generic tag such as:
+
+```text
+<REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-gnb-fhi72:<OAI_VERSION>-o1-e2
+```
+
+---
+
+# 11. Configuration & Runtime Execution
+
+## 11.1 Configuration Principles
+
+Detailed instructions regarding adapter connectivity and the `config.json` parameters can be reviewed in the upstream OAI O1-Adapter documentation.
+
+The configuration covers areas including:
+
+* NETCONF connectivity
+* Telnet connectivity
+* Performance Data polling
+* VES notifications
+* Telnet-to-gNB mapping
+* Adapter runtime behavior
+* O1 management parameters
+
+### Upstream configuration reference
+
+[OAI O1-Adapter — How to connect via O1](https://gitlab.eurecom.fr/oai/o1-adapter/-/blob/main/README.md?ref_type=heads&utm_source=chatgpt.com#how-to-connect-via-o1)
+
+---
+
+# 12. Docker Compose Deployment
+
+For deployment, Docker Compose allows the adapter configuration to be mapped into the container without rebuilding the image.
+
+Use a generic registry reference:
+
+```yaml
+services:
+  adapter-gnb:
+    container_name: adapter-gnb
+
+    image: <REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-o1-adapter:<IMAGE_TAG>
+
+    ports:
+      - "<NETCONF_HOST_PORT>:830"
+      - "<SSH_HOST_PORT>:22"
+
+    volumes:
+      - ./.ftp:/ftp
+      - ./config/config.json:/adapter/config/config.json
+```
+
+### Example local development mapping
+
+The exact host-side ports are environment-specific.
+
+For example:
+
+```yaml
+ports:
+  - "1830:830"
+  - "1222:22"
+```
+
+The important point is the distinction between:
+
+```text
+HOST PORT : CONTAINER PORT
+```
+
+The container-side NETCONF service remains associated with its configured NETCONF port.
+
+---
+
+# 13. gNB Runtime Configuration
+
+At runtime on the gNB side, enable O1 through the Helm chart or equivalent deployment configuration.
+
+A generic example is:
+
+```yaml
+env:
+  - name: USE_ADDITIONAL_OPTIONS
+    value: "--telnetsrv --telnetsrv.shrmod o1 --telnetsrv.listenport <GNB_TELNET_PORT>"
+```
+
+For example, in an environment where the selected telnet port is `9091`:
+
+```yaml
+env:
+  - name: USE_ADDITIONAL_OPTIONS
+    value: "--telnetsrv --telnetsrv.shrmod o1 --telnetsrv.listenport 9091"
+```
+
+---
+
+# 14. Critical Adapter-to-gNB Port Relationship
+
+The adapter's telnet configuration must match the gNB telnet listener.
+
+Conceptually:
+
+```text
+O1 Adapter
+   |
+   | Telnet
+   | <GNB_TELNET_PORT>
+   v
+OAI gNB
+```
+
+Therefore:
+
+```text
+adapter.config.json
+        |
+        +---- telnet.port
+                    |
+                    | MUST MATCH
+                    v
+gNB runtime
+        |
+        +---- --telnetsrv.listenport <GNB_TELNET_PORT>
+```
+
+### Critical constraint
+
+Ensure that:
+
+```text
+telnet.port
+```
+
+defined in the adapter's `config.json` exactly matches:
+
+```text
+--telnetsrv.listenport
+```
+
+configured on the OAI gNB.
+
+A mismatch between these values will prevent the adapter from communicating with the gNB.
+
+---
+
+# 15. End-to-End Deployment Model
+
+The complete deployment can be represented as:
+
+```text
+                         +----------------------+
+                         |          SMO          |
+                         |                      |
+                         |  Configuration       |
+                         |  Fault Management    |
+                         |  Performance Data    |
+                         +----------+-----------+
+                                    |
+                                    | O1 / NETCONF
+                                    | SSH
+                                    v
+                         +----------------------+
+                         |   O1 Adapter         |
+                         |                      |
+                         | netopeer2-server     |
+                         | sysrepo              |
+                         | gnb-adapter          |
+                         +----------+-----------+
+                                    |
+                                    | Telnet
+                                    | <GNB_TELNET_PORT>
+                                    v
+                         +----------------------+
+                         |       OAI gNB        |
+                         |                      |
+                         | FHI 7.2              |
+                         | O1 Telnet module     |
+                         +----------+-----------+
+                                    |
+                      +-------------+-------------+
+                      |                           |
+                      | E2                        | F1 / NG
+                      v                           v
+             +----------------+          +----------------+
+             | Near-RT RIC    |          | 5G Core        |
+             |                |          |                |
+             | E2 Termination |          | AMF / SMF / UPF|
+             +----------------+          +----------------+
+```
+
+---
+
+# 16. Recommended Build Sequence
+
+For a clean deployment, follow this order:
+
+```text
+1. Clone O1 Adapter source
+          |
+          v
+2. Install native dependencies
+   OR prepare Docker build
+          |
+          v
+3. Build O1 Adapter
+          |
+          v
+4. Retrieve/install YANG models
+          |
+          v
+5. Build OAI FHI 7.2
+          |
+          v
+6. Verify libtelnetsrv_o1.so
+          |
+          v
+7. Optionally configure E2 Agent
+          |
+          v
+8. Build final OAI gNB image
+          |
+          v
+9. Configure adapter config.json
+          |
+          v
+10. Configure gNB telnet parameters
+          |
+          v
+11. Deploy adapter
+          |
+          v
+12. Deploy OAI gNB
+          |
+          v
+13. Verify Telnet connectivity
+          |
+          v
+14. Verify NETCONF connectivity
+          |
+          v
+15. Connect SMO through O1
+          |
+          v
+16. Optionally connect Near-RT RIC through E2
+```
+
+---
+
+# 17. Verification Checklist
+
+Before considering the O1 integration operational, verify each layer independently.
+
+### Source and build
+
+```bash
+git status
+```
+
+```bash
+docker images | grep -i o1
+```
+
+### O1 Adapter
+
+Verify:
+
+```text
+gnb-adapter
+netopeer2-server
+sysrepo
+YANG models
+```
+
+### gNB runtime
+
+Verify:
+
+```bash
+ldconfig -p | grep -i telnet
+```
+
+Expected components include:
+
+```text
+libtelnetsrv.so
+libtelnetsrv_ci.so
+libtelnetsrv_o1.so
+```
+
+### Telnet
+
+Verify that the configured gNB telnet listener is reachable:
+
+```bash
+nc -vz <GNB_HOST> <GNB_TELNET_PORT>
+```
+
+or:
+
+```bash
+telnet <GNB_HOST> <GNB_TELNET_PORT>
+```
+
+### NETCONF
+
+Verify that the NETCONF endpoint is reachable:
+
+```bash
+nc -vz <ADAPTER_HOST> <NETCONF_PORT>
+```
+
+Then perform an authenticated NETCONF connection using the environment-specific NETCONF credentials.
+
+### Configuration consistency
+
+Confirm:
+
+```text
+Adapter telnet.port
+        =
+gNB --telnetsrv.listenport
+```
+
+### E2, if enabled
+
+Confirm:
+
+```text
+OAI gNB
+   |
+   | SCTP
+   v
+<RIC_E2T_HOST>:<RIC_E2_SCTP_PORT>
+```
+
+---
+
+# 18. Troubleshooting Guide
+
+## 18.1 `libtelnetsrv_o1.so` is missing
+
+Check:
+
+```bash
+ldconfig -p | grep -i telnet
+```
+
+If the O1 library is missing:
+
+1. Verify that the build stage generated `libtelnetsrv_o1.so`.
+2. Check the `COPY --from=gnb-build` section of the Dockerfile.
+3. Rebuild the runtime image.
+4. Verify the resulting image again.
+
+---
+
+## 18.2 Adapter cannot connect to gNB
+
+Check the telnet port on the gNB:
+
+```bash
+ss -lntp | grep <GNB_TELNET_PORT>
+```
+
+Then verify the adapter configuration.
+
+The most important relationship is:
+
+```text
+adapter config.json
+        |
+        +-- telnet.port
+                  |
+                  +---- must equal ----+
+                                      |
+                                      v
+gNB
+        |
+        +-- --telnetsrv.listenport
+```
+
+Also verify network reachability:
+
+```bash
+nc -vz <GNB_HOST> <GNB_TELNET_PORT>
+```
+
+---
+
+## 18.3 NETCONF connection fails
+
+Check that Netopeer2 is running:
+
+```bash
+ps aux | grep netopeer2
+```
+
+Check the listening port:
+
+```bash
+ss -lntp | grep <NETCONF_PORT>
+```
+
+Check that the required NETCONF user exists:
+
+```bash
+getent passwd <NETCONF_USER>
+```
+
+Do not troubleshoot by publishing the password in logs, Git commits, screenshots, or issue trackers.
+
+---
+
+## 18.4 YANG model installation fails
+
+Inspect:
+
+```bash
+./docker/scripts/get-yangs.sh
+./docker/scripts/install-yangs.sh
+```
+
+Verify:
+
+* Internet connectivity
+* Upstream repository availability
+* Git/Gerrit URLs
+* YANG model versions
+* libyang/sysrepo compatibility
+
+---
+
+## 18.5 Docker build fails while downloading dependencies
+
+Check external connectivity:
+
+```bash
+git ls-remote <UPSTREAM_REPOSITORY>
+```
+
+Review:
+
+```text
+scripts/netconf_dep_install.sh
+docker/scripts/get-yangs.sh
+```
+
+for the exact upstream repositories used by the selected O1-Adapter revision.
+
+---
+
+## 18.6 E2 connection fails
+
+Verify:
+
+* E2T hostname/IP
+* SCTP connectivity
+* E2T port
+* gNB E2 Agent configuration
+* RIC E2T configuration
+* firewall/network policies
+* source/build revision compatibility
+
+Check SCTP connectivity using tools appropriate to the deployment environment.
+
+Do not assume that a default E2 port applies to every RIC deployment.
+
+---
+
+
+# 19. Example Public Configuration Pattern
+
+Instead of publishing real infrastructure information:
+
+```json
+{
+  "host": "<GNB_HOST>",
+  "telnet": {
+    "port": "<GNB_TELNET_PORT>"
+  },
+  "netconf": {
+    "host": "<ADAPTER_HOST>",
+    "port": "<NETCONF_PORT>",
+    "username": "<NETCONF_USER>"
+  }
+}
+```
+
+Environment-specific values should be supplied during deployment.
+
+---
+
+# 20. Summary
+
+The OAI O1 integration consists of three principal layers:
+
+```text
+                    SMO
+                     |
+                     | O1 / NETCONF
+                     v
+              +--------------+
+              | O1 Adapter   |
+              |              |
+              | Netopeer2    |
+              | Sysrepo      |
+              | gnb-adapter  |
+              +------+-------+
+                     |
+                     | Telnet
+                     v
+              +--------------+
+              |   OAI gNB    |
+              |              |
+              | FHI 7.2      |
+              | O1 module    |
+              +------+-------+
+                     |
+                     | Optional E2
+                     v
+              +--------------+
+              | Near-RT RIC  |
+              +--------------+
+```
+
+The critical build and deployment requirements are:
+
+1. Build the O1 Adapter and its NETCONF/sysrepo dependencies.
+2. Install the required YANG models.
+3. Build an OAI FHI 7.2 gNB containing the O1 telnet library.
+4. Verify `libtelnetsrv_o1.so` exists in the runtime image.
+5. Configure the O1 Adapter to reach the gNB telnet interface.
+6. Ensure `telnet.port` and `--telnetsrv.listenport` match exactly.
+7. Configure NETCONF credentials securely.
+8. Optionally configure the E2 Agent for Near-RT RIC integration.
+9. Use generic registry and host placeholders in public documentation.
+10. Inject environment-specific secrets through secure deployment mechanisms.
+11. Verify NETCONF, Telnet, and optionally E2 independently before performing end-to-end O1/E2 integration testing.
+
+This methodology supports both native development environments and reproducible Docker/CI deployments while keeping environment-specific infrastructure and credentials outside the public source repository.
