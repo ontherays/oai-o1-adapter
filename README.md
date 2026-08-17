@@ -1,6 +1,6 @@
 # Comprehensive Build Protocol: OAI O1-Adapter & O1/E2-Capable gNB
 
-This guide provides a practical build and deployment procedure for the OAI O1-Adapter and an O1/E2-capable OAI gNB. It covers native compilation, Docker-based builds, OAI FHI 7.2 integration, optional E2 Agent configuration, and runtime verification.
+This guide provides a practical build and deployment procedure for the OAI O1-Adapter and an O1/E2-capable OAI gNB. It covers native compilation, Docker-based builds, OAI FHI 7.2 integration, optional **OSC NEAR RT RIC** E2 Agent configuration, and runtime verification.
 
 ---
 
@@ -480,7 +480,7 @@ docker run --rm \
 
 ---
 
-# 10. Optional E2 Agent Configuration
+# 10. Optional OSC NEAR RT RIC E2 Agent Configuration
 
 If the OAI gNB also needs to connect to an OSC Near-RT RIC through E2, configure the E2 Agent before building the final gNB image.
 
