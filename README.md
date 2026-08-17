@@ -169,6 +169,43 @@ Verify the generated files:
 ls -lh
 ```
 
+
+```markdown
+
+
+## 3.7 Automated Native Build
+
+The complete native build is automated by:
+
+```bash
+scripts/native_build.sh
+
+```
+
+Run the script from the directory containing the O1-Adapter source:
+
+```bash
+sudo ./scripts/native_build.sh
+
+```
+
+The script performs the following operations:
+
+* Installs the required system and build packages.
+* Creates the `netconf` system user.
+* Retrieves the O1-Adapter source if it is not already available.
+* Installs NETCONF dependencies including `libssh`, `libyang`, `sysrepo`, and `Netopeer2`.
+* Configures `Netopeer2`.
+* Retrieves and installs the required O1 YANG models.
+* Builds the O1-Adapter binary.
+
+After a successful build, the adapter binary is available under:
+
+```text
+oai-o1-adapter/src/
+
+```
+
 ---
 
 # 4. Native Runtime
@@ -202,6 +239,54 @@ Start the adapter:
 ```
 
 The adapter communicates with the OAI softmodem through the Telnet interface.
+
+
+## 4.3 Automated Docker Build
+
+The complete Docker build is automated by:
+
+```bash
+scripts/docker_ci_build.sh
+```
+
+The script builds:
+
+```text
+O1-Adapter image
+        │
+        ▼
+OAI FHI 7.2 O1-capable gNB image
+```
+
+Run:
+
+```bash
+./scripts/docker_ci_build.sh
+```
+
+The script performs the following operations:
+
+* Clones the O1-Adapter source when required.
+* Builds the O1-Adapter Docker image.
+* Verifies that the OAI gNB source is available.
+* Checks out the configured OAI release.
+* Patches `Dockerfile.gNB.fhi72.ubuntu`.
+* Adds the required Telnet libraries, including:
+  * `libtelnetsrv.so`
+  * `libtelnetsrv_ci.so`
+  * `libtelnetsrv_o1.so`
+* Adds a build-time check for `libtelnetsrv_o1.so`.
+* Builds the `oai-gnb` runtime image.
+* Verifies the Telnet libraries inside the resulting image.
+
+The resulting images follow the general naming pattern:
+
+```text
+<REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-o1-adapter:<IMAGE_TAG>
+<REGISTRY_HOST>/<REGISTRY_NAMESPACE>/oai-gnb-fhi72:<OAI_VERSION>-o1
+```
+
+
 
 ---
 
