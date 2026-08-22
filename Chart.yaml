@@ -1,0 +1,6 @@
+apiVersion: v2
+name: oai-o1-adapter
+description: OAI O1 Adapter (NETCONF server + VES client) connecting an OAI gNB to an O-RAN SMO
+type: application
+version: 0.1.0
+appVersion: "2026.w30"

@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "o1adapter.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "o1adapter.labels" . | nindent 4 }}
+data:
+  config.json: |-
+    {
+        "log-level": {{ .Values.logLevel }},
+        "software-version": "{{ .Values.softwareVersion }}",
+        "network": {
+            "host": "{{ required "smo.advertisedHost is required (SMO-reachable LB/node IP)" .Values.smo.advertisedHost }}",
+            "username": "{{ .Values.netconf.username }}",
+            "password": "{{ .Values.netconf.password }}",
+            "netconf-port": {{ .Values.smo.netconfPort }},
+            "sftp-port": {{ .Values.smo.sftpPort }}
+        },
+        "ves": {
+            "template": {
+                "new-alarm": "/adapter/config/ves-new-alarm.json",
+                "clear-alarm": "/adapter/config/ves-clear-alarm.json",
+                "pnf-registration": "/adapter/config/ves-pnf-registration.json",
+                "file-ready": "/adapter/config/ves-file-ready.json",
+                "heartbeat": "/adapter/config/ves-heartbeat.json",
+                "pm-data": "/adapter/config/pmData-measData.xml"
+            },
+            "pnf-registration": {{ .Values.ves.pnfRegistration }},
+            "heartbeat-interval": {{ .Values.ves.heartbeatInterval }},
+            "url": "{{ .Values.ves.url }}",
+            "username": "{{ .Values.ves.username }}",
+            "password": "{{ .Values.ves.password }}",
+            "file-expiry": {{ .Values.ves.fileExpiry }},
+            "pm-data-interval": {{ .Values.ves.pmDataInterval }}
+        },
+        "alarms": {
+            "internal-connection-lost-timeout": {{ .Values.alarms.internalConnectionLostTimeout }},
+            "load-downlink-exceeded-warning-threshold": {{ .Values.alarms.loadDownlinkWarnThreshold }},
+            "load-downlink-exceeded-warning-timeout": {{ .Values.alarms.loadDownlinkWarnTimeout }}
+        },
+        "telnet": {
+            "host": "{{ .Values.telnet.host }}",
+            "port": {{ .Values.telnet.port }}
+        },
+        "info": {
+            "gnb-du-id": {{ .Values.info.gnbDuId }},
+            "gnb-cu-id": {{ .Values.info.gnbCuId }},
+            "cell-local-id": {{ .Values.info.cellLocalId }},
+            "granularityPeriod": {{ .Values.info.granularityPeriod }},
+            "fileReportingPeriod": {{ .Values.info.fileReportingPeriod }},
+            "node-id": "{{ .Values.info.nodeId }}",
+            "location-name": "{{ .Values.info.locationName }}",
+            "managed-by": "{{ .Values.info.managedBy }}",
+            "managed-element-type": "{{ .Values.info.managedElementType }}",
+            "model": "{{ .Values.info.model }}",
+            "unit-type": "{{ .Values.info.unitType }}"
+        }
+    }

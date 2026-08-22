@@ -1,0 +1,18 @@
+{{- if .Values.pmStorage.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "o1adapter.fullname" . }}-ftp
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "o1adapter.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.pmStorage.size }}
+  {{- if .Values.pmStorage.storageClass }}
+  storageClassName: {{ .Values.pmStorage.storageClass }}
+  {{- end }}
+{{- end }}

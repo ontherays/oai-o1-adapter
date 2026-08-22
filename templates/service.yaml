@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "o1adapter.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "o1adapter.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+  {{- end }}
+  selector:
+    {{- include "o1adapter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: netconf
+      protocol: TCP
+      {{- if eq .Values.service.type "NodePort" }}
+      port: 830
+      targetPort: 830
+      nodePort: {{ .Values.smo.netconfPort }}
+      {{- else }}
+      port: {{ .Values.smo.netconfPort }}
+      targetPort: 830
+      {{- end }}
+    - name: sftp
+      protocol: TCP
+      {{- if eq .Values.service.type "NodePort" }}
+      port: 22
+      targetPort: 22
+      nodePort: {{ .Values.smo.sftpPort }}
+      {{- else }}
+      port: {{ .Values.smo.sftpPort }}
+      targetPort: 22
+      {{- end }}

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "o1adapter.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "o1adapter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "o1adapter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "o1adapter.selectorLabels" . | nindent 8 }}
+      annotations:
+        # roll the pod automatically when config.json changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: o1-adapter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # required by the adapter's bundled telnet client when run without a tty
+          env:
+            - name: TERM
+              value: "xterm-256color"
+          ports:
+            - name: netconf
+              containerPort: 830
+            - name: sftp
+              containerPort: 22
+          readinessProbe:
+            tcpSocket:
+              port: 830
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 830
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /adapter/config/config.json
+              subPath: config.json
+            - name: ftp
+              mountPath: /ftp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "o1adapter.fullname" . }}-config
+        {{- if .Values.pmStorage.enabled }}
+        - name: ftp
+          persistentVolumeClaim:
+            claimName: {{ include "o1adapter.fullname" . }}-ftp
+        {{- else }}
+        - name: ftp
+          emptyDir: {}
+        {{- end }}

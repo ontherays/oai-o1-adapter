@@ -1,0 +1,23 @@
+oai-o1-adapter deployed to namespace {{ .Values.namespace }} (release {{ .Release.Name }}).
+
+Wiring summary:
+  gNB telnet (south) : {{ .Values.telnet.host }}:{{ .Values.telnet.port }}  -> gNB pod :9090
+  SMO reaches NETCONF: {{ .Values.smo.advertisedHost }}:{{ .Values.smo.netconfPort }}  (service type {{ .Values.service.type }})
+  SMO reaches SFTP   : {{ .Values.smo.advertisedHost }}:{{ .Values.smo.sftpPort }}
+  VES collector (out): {{ .Values.ves.url }}
+
+Verify:
+  1) Pod up:
+       kubectl -n {{ .Values.namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  2) Service / external IP:
+       kubectl -n {{ .Values.namespace }} get svc {{ include "o1adapter.fullname" . }}
+  3) Telnet reachable from the adapter pod (should connect):
+       kubectl -n {{ .Values.namespace }} exec deploy/{{ include "o1adapter.fullname" . }} -- \
+         bash -lc "timeout 3 bash -c '</dev/tcp/{{ .Values.telnet.host }}/{{ .Values.telnet.port }}' && echo TELNET_OK"
+  4) From the SMO host, NETCONF mount target reachable:
+       nc -vz {{ .Values.smo.advertisedHost }} {{ .Values.smo.netconfPort }}
+  5) Adapter logs (telnet connect + pnfRegistration):
+       kubectl -n {{ .Values.namespace }} logs deploy/{{ include "o1adapter.fullname" . }} -f
+
+If SDNC shows the node but connection-status != connected, it is almost always
+smo.advertisedHost / smo.netconfPort not being routable from 192.168.8.69.
